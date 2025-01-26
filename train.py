@@ -11,14 +11,14 @@ from onnxruntime.quantization import quantize_dynamic, QuantType
 class SimpleModel(nn.Module):
     def __init__(self):
         super(SimpleModel, self).__init__()
-        self.fc1 = nn.Linear(3, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 1)
+        self.fc1 = nn.Linear(3, 32)  # 3 входных пикселя
+        self.fc2 = nn.Linear(32, 16)  # Скрытый слой
+        self.fc3 = nn.Linear(16, 1)  # Выходной слой
 
     def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        x = torch.sigmoid(self.fc3(x))
+        x = torch.relu(self.fc1(x))  # ReLU
+        x = torch.relu(self.fc2(x))  # ReLU
+        x = torch.sigmoid(self.fc3(x))  # Сигмоида на выходе
         return x
 
 # Функция для создания набора данных из изображения
@@ -29,10 +29,10 @@ def create_dataset(image_array):
 
     for i in range(1, rows):
         for j in range(1, cols):
-            # Собираем три соседних пикселя
-            left = image_array[i, j-1]
-            top = image_array[i-1, j]
-            diag = image_array[i-1, j-1]
+            # Собираем три известных пикселя
+            left = image_array[i, j-1]  # Левый пиксель
+            top = image_array[i-1, j]  # Верхний пиксель
+            diag = image_array[i-1, j-1]  # Диагональный пиксель
 
             # Целевой пиксель
             target = image_array[i, j]
@@ -82,12 +82,12 @@ def main():
     y_tensor = torch.tensor(y_all, dtype=torch.float32)
 
     # Компиляция модели
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.MSELoss()  # Функция потерь
+    optimizer = optim.Adam(model.parameters(), lr=0.001)  # Оптимизатор
 
     # Обучение модели
     print("Начало обучения...")
-    for epoch in range(10):
+    for epoch in range(500):  # 10 эпох
         optimizer.zero_grad()
         outputs = model(X_tensor)
         loss = criterion(outputs, y_tensor)
@@ -97,17 +97,25 @@ def main():
     print("Обучение завершено.")
 
     # Экспорт модели в ONNX
-    dummy_input = torch.randn(1, 3)
+    dummy_input = torch.randn(1, 3)  # Пример входных данных (3 пикселя)
     onnx_model_path = "pixel_predictor.onnx"
-    torch.onnx.export(model, dummy_input, onnx_model_path, opset_version=13)
+    torch.onnx.export(
+        model,
+        dummy_input,
+        onnx_model_path,
+        opset_version=13,
+        input_names=["input"],
+        output_names=["output"],
+        dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}}
+    )
     print(f"Модель экспортирована в ONNX: {onnx_model_path}")
 
-    # Посттренировочное квантование (PTQ) с использованием ONNX Runtime
+    # Посттренировочное квантование (PTQ) с использованием ONNX Runtime (Int8)
     quantized_model_path = "pixel_predictor_quantized.onnx"
     quantize_dynamic(
         onnx_model_path,
         quantized_model_path,
-        weight_type=QuantType.QUInt8  # 8-битное квантование для весов
+        weight_type=QuantType.QInt8  # 8-битное квантование для весов (Int8)
     )
     print(f"Квантованная модель сохранена в формате ONNX: {quantized_model_path}")
 
